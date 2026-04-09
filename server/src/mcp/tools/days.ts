@@ -16,8 +16,11 @@ import {
   TOOL_ANNOTATIONS_NON_IDEMPOTENT,
   demoDenied, noAccess, ok,
 } from './_shared';
+import { canWrite } from '../scopes';
 
-export function registerDayTools(server: McpServer, userId: number): void {
+export function registerDayTools(server: McpServer, userId: number, scopes: string[] | null): void {
+  if (!canWrite(scopes, 'trips')) return;
+
   // --- DAYS ---
 
   server.registerTool(

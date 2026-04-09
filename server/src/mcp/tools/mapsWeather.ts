@@ -6,8 +6,11 @@ import {
   TOOL_ANNOTATIONS_READONLY,
   ok,
 } from './_shared';
+import { canRead } from '../scopes';
 
-export function registerMapsWeatherTools(server: McpServer, userId: number): void {
+export function registerMapsWeatherTools(server: McpServer, userId: number, scopes: string[] | null): void {
+  if (!canRead(scopes, 'media')) return;
+
   // --- MAPS EXTRAS ---
 
   server.registerTool(

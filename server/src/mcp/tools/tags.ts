@@ -7,11 +7,15 @@ import {
   TOOL_ANNOTATIONS_DELETE, TOOL_ANNOTATIONS_NON_IDEMPOTENT,
   demoDenied, ok,
 } from './_shared';
+import { canRead, canWrite } from '../scopes';
 
-export function registerTagTools(server: McpServer, userId: number): void {
+export function registerTagTools(server: McpServer, userId: number, scopes: string[] | null): void {
+  const R = canRead(scopes, 'places');
+  const W = canWrite(scopes, 'places');
+
   // --- TAGS ---
 
-  server.registerTool(
+  if (R) server.registerTool(
     'list_tags',
     {
       description: 'List all tags belonging to the current user.',
@@ -24,7 +28,7 @@ export function registerTagTools(server: McpServer, userId: number): void {
     }
   );
 
-  server.registerTool(
+  if (W) server.registerTool(
     'create_tag',
     {
       description: 'Create a new tag (user-scoped label for places).',
@@ -41,7 +45,7 @@ export function registerTagTools(server: McpServer, userId: number): void {
     }
   );
 
-  server.registerTool(
+  if (W) server.registerTool(
     'update_tag',
     {
       description: 'Update the name or color of an existing tag.',
@@ -60,7 +64,7 @@ export function registerTagTools(server: McpServer, userId: number): void {
     }
   );
 
-  server.registerTool(
+  if (W) server.registerTool(
     'delete_tag',
     {
       description: 'Delete a tag (removes it from all places it was attached to).',

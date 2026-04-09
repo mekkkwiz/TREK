@@ -72,6 +72,43 @@ export const authApi = {
   },
 }
 
+export const oauthApi = {
+  /** Validate OAuth authorize params — called by consent page on load */
+  validate: (params: {
+    response_type: string
+    client_id: string
+    redirect_uri: string
+    scope: string
+    state?: string
+    code_challenge: string
+    code_challenge_method: string
+  }) => apiClient.get('/oauth/authorize/validate', { params }).then(r => r.data),
+
+  /** Submit user consent (approve or deny) */
+  authorize: (body: {
+    client_id: string
+    redirect_uri: string
+    scope: string
+    state?: string
+    code_challenge: string
+    code_challenge_method: string
+    approved: boolean
+  }) => apiClient.post('/oauth/authorize', body).then(r => r.data),
+
+  clients: {
+    list: () => apiClient.get('/oauth/clients').then(r => r.data),
+    create: (data: { name: string; redirect_uris: string[]; allowed_scopes: string[] }) =>
+      apiClient.post('/oauth/clients', data).then(r => r.data),
+    rotate: (id: string) => apiClient.post(`/oauth/clients/${id}/rotate`).then(r => r.data),
+    delete: (id: string) => apiClient.delete(`/oauth/clients/${id}`).then(r => r.data),
+  },
+
+  sessions: {
+    list: () => apiClient.get('/oauth/sessions').then(r => r.data),
+    revoke: (id: number) => apiClient.delete(`/oauth/sessions/${id}`).then(r => r.data),
+  },
+}
+
 export const tripsApi = {
   list: (params?: Record<string, unknown>) => apiClient.get('/trips', { params }).then(r => r.data),
   create: (data: Record<string, unknown>) => apiClient.post('/trips', data).then(r => r.data),

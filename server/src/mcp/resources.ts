@@ -9,12 +9,12 @@ import { listReservations } from '../services/reservationService';
 import { listNotes as listDayNotes } from '../services/dayNoteService';
 import { listNotes as listCollabNotes, listPolls, listMessages } from '../services/collabService';
 import { listItems as listTodoItems } from '../services/todoService';
-import { listFiles } from '../services/fileService';
 import { listCategories } from '../services/categoryService';
 import { listBucketList, listVisitedCountries, getStats as getAtlasStats, listManuallyVisitedRegions } from '../services/atlasService';
 import { getNotifications } from '../services/inAppNotifications';
 import { getActivePlanId, getActivePlan, getPlanData, getEntries as getVacayEntries, getHolidays } from '../services/vacayService';
 import { isAddonEnabled } from '../services/adminService';
+import { ADDON_IDS } from '../addons';
 
 function parseId(value: string | string[]): number | null {
   const n = Number(Array.isArray(value) ? value[0] : value);
@@ -95,7 +95,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // Budget items
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.BUDGET)) server.registerResource(
     'trip-budget',
     new ResourceTemplate('trek://trips/{tripId}/budget', { list: undefined }),
     { description: 'Budget and expense items for a trip', mimeType: 'application/json' },
@@ -108,7 +108,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // Packing checklist
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.PACKING)) server.registerResource(
     'trip-packing',
     new ResourceTemplate('trek://trips/{tripId}/packing', { list: undefined }),
     { description: 'Packing checklist for a trip', mimeType: 'application/json' },
@@ -176,7 +176,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // Collab notes for a trip
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.COLLAB)) server.registerResource(
     'trip-collab-notes',
     new ResourceTemplate('trek://trips/{tripId}/collab-notes', { list: undefined }),
     { description: 'Shared collaborative notes for a trip', mimeType: 'application/json' },
@@ -188,21 +188,8 @@ export function registerResources(server: McpServer, userId: number): void {
     }
   );
 
-  // Trip files (active, not trash)
-  server.registerResource(
-    'trip-files',
-    new ResourceTemplate('trek://trips/{tripId}/files', { list: undefined }),
-    { description: 'Active files attached to a trip (excludes trash)', mimeType: 'application/json' },
-    async (uri, { tripId }) => {
-      const id = parseId(tripId);
-      if (id === null || !canAccessTrip(id, userId)) return accessDenied(uri.href);
-      const files = listFiles(id, false);
-      return jsonContent(uri.href, files);
-    }
-  );
-
   // Trip to-do list
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.PACKING)) server.registerResource(
     'trip-todos',
     new ResourceTemplate('trek://trips/{tripId}/todos', { list: undefined }),
     { description: 'To-do items for a trip, ordered by position', mimeType: 'application/json' },
@@ -226,7 +213,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // User's bucket list
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.ATLAS)) server.registerResource(
     'bucket-list',
     'trek://bucket-list',
     { description: 'Your personal travel bucket list', mimeType: 'application/json' },
@@ -237,7 +224,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // User's visited countries
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.ATLAS)) server.registerResource(
     'visited-countries',
     'trek://visited-countries',
     { description: 'Countries you have marked as visited in Atlas', mimeType: 'application/json' },
@@ -248,7 +235,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // Budget per-person summary
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.BUDGET)) server.registerResource(
     'trip-budget-per-person',
     new ResourceTemplate('trek://trips/{tripId}/budget/per-person', { list: undefined }),
     { description: 'Per-person budget summary for a trip (total spent per member, split breakdown)', mimeType: 'application/json' },
@@ -261,7 +248,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // Budget settlement
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.BUDGET)) server.registerResource(
     'trip-budget-settlement',
     new ResourceTemplate('trek://trips/{tripId}/budget/settlement', { list: undefined }),
     { description: 'Suggested settlement transactions to balance who owes whom', mimeType: 'application/json' },
@@ -274,7 +261,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // Packing bags
-  server.registerResource(
+  if (isAddonEnabled(ADDON_IDS.PACKING)) server.registerResource(
     'trip-packing-bags',
     new ResourceTemplate('trek://trips/{tripId}/packing/bags', { list: undefined }),
     { description: 'All packing bags for a trip with their members', mimeType: 'application/json' },
@@ -298,7 +285,7 @@ export function registerResources(server: McpServer, userId: number): void {
   );
 
   // Atlas stats and regions (addon-gated)
-  if (isAddonEnabled('atlas')) {
+  if (isAddonEnabled(ADDON_IDS.ATLAS)) {
     server.registerResource(
       'atlas-stats',
       'trek://atlas/stats',
@@ -321,7 +308,7 @@ export function registerResources(server: McpServer, userId: number): void {
   }
 
   // Collab polls & messages (addon-gated)
-  if (isAddonEnabled('collab')) {
+  if (isAddonEnabled(ADDON_IDS.COLLAB)) {
     server.registerResource(
       'trip-collab-polls',
       new ResourceTemplate('trek://trips/{tripId}/collab/polls', { list: undefined }),
@@ -348,7 +335,7 @@ export function registerResources(server: McpServer, userId: number): void {
   }
 
   // Vacay resources (addon-gated)
-  if (isAddonEnabled('vacay')) {
+  if (isAddonEnabled(ADDON_IDS.VACAY)) {
     server.registerResource(
       'vacay-plan',
       'trek://vacay/plan',

@@ -4,7 +4,9 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
 import { User } from '../types';
 import { verifyMcpToken, verifyJwtToken } from '../services/authService';
+import { getUserByAccessToken } from '../services/oauthService';
 import { isAddonEnabled } from '../services/adminService';
+import { ADDON_IDS } from '../addons';
 import { registerResources } from './resources';
 import { registerTools } from './tools';
 
@@ -12,6 +14,10 @@ interface McpSession {
   server: McpServer;
   transport: StreamableHTTPServerTransport;
   userId: number;
+  /** null = static trek_ token or JWT (full access); string[] = OAuth 2.1 scopes */
+  scopes: string[] | null;
+  /** true when authenticated via static trek_ token — triggers deprecation prompt */
+  isStaticToken: boolean;
   lastActivity: number;
 }
 
@@ -73,30 +79,49 @@ const sessionSweepInterval = setInterval(() => {
 // Prevent the interval from keeping the process alive if nothing else is running
 sessionSweepInterval.unref();
 
-function verifyToken(authHeader: string | undefined): User | null {
+interface VerifyTokenResult {
+  user: User;
+  /** null = full access (static token or JWT); string[] = OAuth 2.1 scoped access */
+  scopes: string[] | null;
+  isStaticToken: boolean;
+}
+
+function verifyToken(authHeader: string | undefined): VerifyTokenResult | null {
   const token = authHeader && authHeader.split(' ')[1];
   if (!token) return null;
 
-  // Long-lived MCP API token (trek_...)
-  if (token.startsWith('trek_')) {
-    return verifyMcpToken(token);
+  // OAuth 2.1 access token (trekoa_...)
+  if (token.startsWith('trekoa_')) {
+    const result = getUserByAccessToken(token);
+    if (!result) return null;
+    return { user: result.user, scopes: result.scopes, isStaticToken: false };
   }
 
-  // Short-lived JWT
-  return verifyJwtToken(token);
+  // Long-lived static MCP token (trek_...) — full access + deprecation notice
+  if (token.startsWith('trek_')) {
+    const user = verifyMcpToken(token);
+    if (!user) return null;
+    return { user, scopes: null, isStaticToken: true };
+  }
+
+  // Short-lived JWT (TREK web session used directly) — full access, no notice
+  const user = verifyJwtToken(token);
+  if (!user) return null;
+  return { user, scopes: null, isStaticToken: false };
 }
 
 export async function mcpHandler(req: Request, res: Response): Promise<void> {
-  if (!isAddonEnabled('mcp')) {
+  if (!isAddonEnabled(ADDON_IDS.MCP)) {
     res.status(403).json({ error: 'MCP is not enabled' });
     return;
   }
 
-  const user = verifyToken(req.headers['authorization']);
-  if (!user) {
+  const tokenResult = verifyToken(req.headers['authorization']);
+  if (!tokenResult) {
     res.status(401).json({ error: 'Access token required' });
     return;
   }
+  const { user, scopes, isStaticToken } = tokenResult;
 
   if (isRateLimited(user.id)) {
     res.status(429).json({ error: 'Too many requests. Please slow down.' });
@@ -150,13 +175,14 @@ export async function mcpHandler(req: Request, res: Response): Promise<void> {
     },
   });
   registerResources(server, user.id);
-  registerTools(server, user.id);
+  registerTools(server, user.id, scopes, isStaticToken);
 
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => randomUUID(),
     onsessioninitialized: (sid) => {
-      sessions.set(sid, { server, transport, userId: user.id, lastActivity: Date.now() });
-      console.log(`[MCP] Session ${sid} created for user ${user.id}. Active sessions: ${sessions.size}`);
+      sessions.set(sid, { server, transport, userId: user.id, scopes, isStaticToken, lastActivity: Date.now() });
+      const authMethod = isStaticToken ? 'static-token' : scopes ? `oauth(${scopes.join(',')})` : 'jwt';
+      console.log(`[MCP] Session ${sid} created for user ${user.id} [${authMethod}]. Active sessions: ${sessions.size}`);
     },
     onsessionclosed: (sid) => {
       sessions.delete(sid);

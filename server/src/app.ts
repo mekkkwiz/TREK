@@ -32,6 +32,7 @@ import budgetRoutes from './routes/budget';
 import collabRoutes from './routes/collab';
 import backupRoutes from './routes/backup';
 import oidcRoutes from './routes/oidc';
+import { oauthPublicRouter, oauthApiRouter } from './routes/oauth';
 import vacayRoutes from './routes/vacay';
 import atlasRoutes from './routes/atlas';
 import memoriesRoutes from './routes/memories/unified';
@@ -263,6 +264,11 @@ export function createApp(): express.Application {
   app.use('/api/backup', backupRoutes);
   app.use('/api/notifications', notificationRoutes);
   app.use('/api', shareRoutes);
+
+  // OAuth 2.1 — public endpoints (/.well-known, /oauth/token, /oauth/revoke)
+  app.use('/', oauthPublicRouter);
+  // OAuth 2.1 — SPA-facing authenticated endpoints (/api/oauth/*)
+  app.use('/api/oauth', oauthApiRouter);
 
   // MCP endpoint
   app.post('/mcp', mcpHandler);
