@@ -1,6 +1,5 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
 import { registerTodoTools } from './tools/todos';
-import { registerFileTools } from './tools/files';
 import { registerAssignmentTools } from './tools/assignments';
 import { registerReservationTools } from './tools/reservations';
 import { registerTagTools } from './tools/tags';
@@ -40,8 +39,6 @@ export function registerTools(server: McpServer, userId: number): void {
   registerAtlasTools(server, userId);
 
   registerCollabTools(server, userId);
-
-  registerFileTools(server, userId);
 
   registerVacayTools(server, userId);
 

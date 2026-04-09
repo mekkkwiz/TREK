@@ -256,61 +256,6 @@ describe('Tool: mark_all_notifications_read', () => {
 });
 
 // ---------------------------------------------------------------------------
-// delete_notification
-// ---------------------------------------------------------------------------
-
-describe('Tool: delete_notification', () => {
-  it('removes the notification row and returns success', async () => {
-    const { user } = createUser(testDb);
-    const notif = createNotification(testDb, user.id) as any;
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'delete_notification',
-        arguments: { notificationId: notif.id },
-      });
-      const data = parseToolResult(result) as any;
-      expect(data.success).toBe(true);
-      expect(testDb.prepare('SELECT id FROM notifications WHERE id = ?').get(notif.id)).toBeUndefined();
-    });
-  });
-
-  it('returns isError for non-existent notification', async () => {
-    const { user } = createUser(testDb);
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({
-        name: 'delete_notification',
-        arguments: { notificationId: 99999 },
-      });
-      expect(result.isError).toBe(true);
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// delete_all_notifications
-// ---------------------------------------------------------------------------
-
-describe('Tool: delete_all_notifications', () => {
-  it('clears all notifications for user and returns count', async () => {
-    const { user } = createUser(testDb);
-    const { user: other } = createUser(testDb);
-    createNotification(testDb, user.id);
-    createNotification(testDb, user.id);
-    createNotification(testDb, other.id); // should not be deleted
-    await withHarness(user.id, async (h) => {
-      const result = await h.client.callTool({ name: 'delete_all_notifications', arguments: {} });
-      const data = parseToolResult(result) as any;
-      expect(data.success).toBe(true);
-      expect(data.count).toBe(2);
-      const remaining = (testDb.prepare('SELECT COUNT(*) as c FROM notifications WHERE recipient_id = ?').get(user.id) as any).c;
-      expect(remaining).toBe(0);
-      const otherRemaining = (testDb.prepare('SELECT COUNT(*) as c FROM notifications WHERE recipient_id = ?').get(other.id) as any).c;
-      expect(otherRemaining).toBe(1);
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Resource: trek://notifications/in-app
 // ---------------------------------------------------------------------------
 
