@@ -17,26 +17,34 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: prerelease-build
+  cancel-in-progress: false
+
 jobs:
   version-bump:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.VERSION }}
+      sha: ${{ steps.bump.outputs.SHA }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          fetch-tags: true
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Determine prerelease version and tag
+      - name: Determine prerelease version
         id: bump
         run: |
           git fetch --tags
 
+          # Capture the exact commit we're building so build/merge jobs are pinned to it
+          echo "SHA=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
           # Get latest stable tag (exclude prerelease tags)
           STABLE_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -v '\-pre\.' | sort -V | tail -1)
           STABLE="${STABLE_TAG#v}"
+          STABLE="${STABLE:-0.0.0}"
           echo "Latest stable: $STABLE"
 
           IFS='.' read -r MAJOR MINOR PATCH <<< "$STABLE"
@@ -62,12 +70,6 @@ jobs:
           echo "VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
           echo "$STABLE → $NEW_VERSION"
 
-          # Tag only — no file changes, no commit
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "v$NEW_VERSION"
-          git push origin "v$NEW_VERSION"
-
   build:
     runs-on: ${{ matrix.runner }}
     needs: version-bump
@@ -85,7 +87,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: ${{ needs.version-bump.outputs.sha }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -125,7 +127,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: dev
+          ref: ${{ needs.version-bump.outputs.sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Download build digests
         uses: actions/download-artifact@v4
@@ -144,27 +148,36 @@ jobs:
       - name: Create and push multi-arch manifest
         working-directory: /tmp/digests
         run: |
-          VERSION=${{ needs.version-bump.outputs.version }}
+          VERSION="${{ needs.version-bump.outputs.version }}"
           mapfile -t digests < <(printf 'mauriceboe/trek@sha256:%s\n' *)
           MAJOR_TAG="$(echo "$VERSION" | cut -d. -f1)-pre"
           docker buildx imagetools create \
-            -t mauriceboe/trek:latest-pre \
-            -t mauriceboe/trek:$MAJOR_TAG \
-            -t mauriceboe/trek:$VERSION \
+            -t "mauriceboe/trek:latest-pre" \
+            -t "mauriceboe/trek:$MAJOR_TAG" \
+            -t "mauriceboe/trek:$VERSION" \
             "${digests[@]}"
 
       - name: Inspect manifest
         run: docker buildx imagetools inspect mauriceboe/trek:latest-pre
+
+      - name: Push git tag
+        run: |
+          VERSION="${{ needs.version-bump.outputs.version }}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "v$VERSION"
+          git push origin "v$VERSION"
 
       - name: Clean up old prerelease tags
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           KEEP=5
-          VERSION=${{ needs.version-bump.outputs.version }}
+          VERSION="${{ needs.version-bump.outputs.version }}"
           BASE_VERSION="$(echo "$VERSION" | sed 's/-pre\..*//')"
           git fetch --tags
-          mapfile -t ALL_TAGS < <(git tag -l "v${BASE_VERSION}-pre.*" | sort -t. -k4 -n)
+          # Sort by numeric prerelease N (field after -pre.) to get correct ascending order
+          mapfile -t ALL_TAGS < <(git tag -l "v${BASE_VERSION}-pre.*" | awk -F'-pre\\.' '{print $2" "$0}' | sort -n | awk '{print $2}')
           TOTAL=${#ALL_TAGS[@]}
           DELETE_COUNT=$((TOTAL - KEEP))
           if [ "$DELETE_COUNT" -gt 0 ]; then

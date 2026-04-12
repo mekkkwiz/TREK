@@ -21,6 +21,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: stable-build
+  cancel-in-progress: false
+
 jobs:
   version-bump:
     runs-on: ubuntu-latest
@@ -41,6 +45,7 @@ jobs:
           # Derive version from git tags — no package.json dependency
           STABLE_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | grep -v '\-pre\.' | sort -V | tail -1)
           STABLE="${STABLE_TAG#v}"
+          STABLE="${STABLE:-0.0.0}"
 
           PRE_TAG=$(git tag -l 'v*-pre.*' | sort -V | tail -1)
 
@@ -65,6 +70,12 @@ jobs:
             if [ -n "$PRE_TAG" ]; then
               PRE_BASE="${PRE_TAG#v}"
               PRE_BASE="${PRE_BASE%-pre.*}"
+              PRE_MAJOR="$(echo "$PRE_BASE" | cut -d. -f1)"
+              # Refuse to auto-finalize a major bump — it bypasses confirm_major
+              if [ "$PRE_MAJOR" -gt "$MAJOR" ]; then
+                echo "::error::In-flight prerelease $PRE_TAG is a major bump ($STABLE → $PRE_BASE). Use bump=major with confirm_major=MAJOR to finalize."
+                exit 1
+              fi
               # If prerelease base is strictly greater than stable, finalize it
               HIGHEST=$(printf '%s\n' "$PRE_BASE" "$STABLE" | sort -V | tail -1)
               if [ "$HIGHEST" = "$PRE_BASE" ] && [ "$PRE_BASE" != "$STABLE" ]; then
@@ -176,16 +187,16 @@ jobs:
       - name: Create and push multi-arch manifest
         working-directory: /tmp/digests
         run: |
-          VERSION=${{ needs.version-bump.outputs.version }}
+          VERSION="${{ needs.version-bump.outputs.version }}"
           mapfile -t digests < <(printf 'mauriceboe/trek@sha256:%s\n' *)
           MAJOR_TAG="$(echo "$VERSION" | cut -d. -f1)"
           docker buildx imagetools create \
-            -t mauriceboe/trek:latest \
-            -t mauriceboe/trek:$MAJOR_TAG \
-            -t mauriceboe/trek:$VERSION \
-            -t mauriceboe/nomad:latest \
-            -t mauriceboe/nomad:$MAJOR_TAG \
-            -t mauriceboe/nomad:$VERSION \
+            -t "mauriceboe/trek:latest" \
+            -t "mauriceboe/trek:$MAJOR_TAG" \
+            -t "mauriceboe/trek:$VERSION" \
+            -t "mauriceboe/nomad:latest" \
+            -t "mauriceboe/nomad:$MAJOR_TAG" \
+            -t "mauriceboe/nomad:$VERSION" \
             "${digests[@]}"
 
       - name: Inspect manifest
